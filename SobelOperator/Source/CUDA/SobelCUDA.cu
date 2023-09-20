@@ -1,12 +1,12 @@
 #include "../../Headers/CUDA/SobelCUDA.cuh"
 
-cv::Mat input_image, output_image;
-cv::String input_file, output_file;
-StopWatchInterface *timer = nullptr;
+cv::Mat cuda_input_image, cuda_output_image;
+cv::String cuda_input_file, cuda_output_file;
+StopWatchInterface *cudaTimer = nullptr;
 unsigned char *deviceInput = nullptr, *deviceOutput = nullptr;
 float *hostKernel = nullptr, *deviceKernel = nullptr;
 
-__global__ void gaussianBlurKernel(unsigned char *input_image, unsigned char *output_image, int width, int height, float *kernel)
+__global__ void gaussianBlurKernel(unsigned char *cuda_input_image, unsigned char *cuda_output_image, int width, int height, float *kernel)
 {
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -27,16 +27,16 @@ __global__ void gaussianBlurKernel(unsigned char *input_image, unsigned char *ou
                 {
                     int inputIndex = yOffset * width + xOffset;
                     int kernelIndex = (i + kernelRadius) * GAUSSIAN_KERNEL_SIZE + (j + kernelRadius);
-                    blurPixel = blurPixel + static_cast<float>(input_image[inputIndex]) * kernel[kernelIndex];
+                    blurPixel = blurPixel + static_cast<float>(cuda_input_image[inputIndex]) * kernel[kernelIndex];
                 }
             }
         }
 
-        output_image[y * width + x] = static_cast<unsigned char>(blurPixel);
+        cuda_output_image[y * width + x] = static_cast<unsigned char>(blurPixel);
     }
 }
 
-__global__ void sobelFilterKernel(unsigned char *input_image, unsigned char *output_image, unsigned int image_width, unsigned int image_height)
+__global__ void sobelFilterKernel(unsigned char *cuda_input_image, unsigned char *cuda_output_image, unsigned int image_width, unsigned int image_height)
 {
     int sobel_x[SOBEL_KERNEL_SIZE][SOBEL_KERNEL_SIZE] = {
         { -1, 0, 1 },
@@ -57,13 +57,13 @@ __global__ void sobelFilterKernel(unsigned char *input_image, unsigned char *out
 
     if ((num_columns < (image_width - 1)) && (num_rows < (image_height - 1)))
     {
-        float gradient_x =  (input_image[index] * sobel_x[0][0]) + (input_image[index + 1] * sobel_x[0][1]) + (input_image[index + 2] * sobel_x[0][2]) +
-                            (input_image[index] * sobel_x[1][0]) + (input_image[index + 1] * sobel_x[1][1]) + (input_image[index + 2] * sobel_x[1][2]) +
-                            (input_image[index] * sobel_x[2][0]) + (input_image[index + 1] * sobel_x[2][1]) + (input_image[index + 2] * sobel_x[2][2]);
+        float gradient_x =  (cuda_input_image[index] * sobel_x[0][0]) + (cuda_input_image[index + 1] * sobel_x[0][1]) + (cuda_input_image[index + 2] * sobel_x[0][2]) +
+                            (cuda_input_image[index] * sobel_x[1][0]) + (cuda_input_image[index + 1] * sobel_x[1][1]) + (cuda_input_image[index + 2] * sobel_x[1][2]) +
+                            (cuda_input_image[index] * sobel_x[2][0]) + (cuda_input_image[index + 1] * sobel_x[2][1]) + (cuda_input_image[index + 2] * sobel_x[2][2]);
 
-        float gradient_y =  (input_image[index] * sobel_y[0][0]) + (input_image[index + 1] * sobel_y[0][1]) + (input_image[index + 2] * sobel_y[0][2]) +
-                            (input_image[index] * sobel_y[1][0]) + (input_image[index + 1] * sobel_y[1][1]) + (input_image[index + 2] * sobel_y[1][2]) +
-                            (input_image[index] * sobel_y[2][0]) + (input_image[index + 1] * sobel_y[2][1]) + (input_image[index + 2] * sobel_y[2][2]);
+        float gradient_y =  (cuda_input_image[index] * sobel_y[0][0]) + (cuda_input_image[index + 1] * sobel_y[0][1]) + (cuda_input_image[index + 2] * sobel_y[0][2]) +
+                            (cuda_input_image[index] * sobel_y[1][0]) + (cuda_input_image[index + 1] * sobel_y[1][1]) + (cuda_input_image[index + 2] * sobel_y[1][2]) +
+                            (cuda_input_image[index] * sobel_y[2][0]) + (cuda_input_image[index + 1] * sobel_y[2][1]) + (cuda_input_image[index + 2] * sobel_y[2][2]);
 
         float gradient = sqrtf(gradient_x * gradient_x + gradient_y * gradient_y);
 
@@ -75,7 +75,7 @@ __global__ void sobelFilterKernel(unsigned char *input_image, unsigned char *out
 
         __syncthreads();
 
-        output_image[index] = gradient;
+        cuda_output_image[index] = gradient;
     }
 }
 
@@ -109,7 +109,7 @@ void runSobelOperator(cv::Mat *inputImage, cv::Mat *outputImage)
         hostKernel[i] = hostKernel[i] / kernelSum;
     }
 
-    sdkCreateTimer(&timer);
+    sdkCreateTimer(&cudaTimer);
 
     result = cudaMalloc((void **)&deviceInput, imageSize);
     if (result != CUDA_SUCCESS)
@@ -150,10 +150,10 @@ void runSobelOperator(cv::Mat *inputImage, cv::Mat *outputImage)
     dim3 dimBlock(BLOCK_SIZE, BLOCK_SIZE);
     dim3 dimGrid(imageHeight, imageWidth);
 
-    sdkStartTimer(&timer);
+    sdkStartTimer(&cudaTimer);
     gaussianBlurKernel<<<dimGrid, dimBlock>>>(deviceInput, deviceOutput, imageWidth, imageHeight, deviceKernel);
     sobelFilterKernel<<<dimGrid, dimBlock>>>(deviceInput, deviceOutput, inputImage->cols, inputImage->rows);
-    sdkStopTimer(&timer);
+    sdkStopTimer(&cudaTimer);
 
     result = cudaMemcpy(outputImage->data, deviceOutput, imageSize, cudaMemcpyDeviceToHost);
     if (result != CUDA_SUCCESS)
@@ -168,47 +168,47 @@ void sobelCUDA(int image_number)
     switch(image_number)
     {
         case 1:
-            input_file = "Images\\Input\\img1.jpg";
-            output_file = "Images\\Output\\Sobel-CUDA-1.jpg";
+            cuda_input_file = "Images\\Input\\img1.jpg";
+            cuda_output_file = "Images\\Output\\Sobel-CUDA-1.jpg";
         break;
         case 2:
-            input_file = "Images\\Input\\img2.jpg";
-            output_file = "Images\\Output\\Sobel-CUDA-2.jpg";
+            cuda_input_file = "Images\\Input\\img2.jpg";
+            cuda_output_file = "Images\\Output\\Sobel-CUDA-2.jpg";
         break;
         case 3:
-            input_file = "Images\\Input\\img3.jpg";
-            output_file = "Images\\Output\\Sobel-CUDA-3.jpg";
+            cuda_input_file = "Images\\Input\\img3.jpg";
+            cuda_output_file = "Images\\Output\\Sobel-CUDA-3.jpg";
         break;
         case 4:
-            input_file = "Images\\Input\\img4.jpg";
-            output_file = "Images\\Output\\Sobel-CUDA-4.jpg";
+            cuda_input_file = "Images\\Input\\img4.jpg";
+            cuda_output_file = "Images\\Output\\Sobel-CUDA-4.jpg";
         break;
         case 5:
-            input_file = "Images\\Input\\img5.jpg";
-            output_file = "Images\\Output\\Sobel-CUDA-5.jpg";
+            cuda_input_file = "Images\\Input\\img5.jpg";
+            cuda_output_file = "Images\\Output\\Sobel-CUDA-5.jpg";
         break;
         default:
             std::cerr << std::endl << "Error ... Please Enter Valid Number ... Exiting !!!" << std::endl;
-            cleanup();
+            cudaCleanup();
             exit(EXIT_FAILURE);
         break;
     }
 
-    input_image = cv::imread(input_file, cv::IMREAD_GRAYSCALE);
-    output_image = input_image.clone();
+    cuda_input_image = cv::imread(cuda_input_file, cv::IMREAD_GRAYSCALE);
+    cuda_output_image = cuda_input_image.clone();
 
-    runSobelOperator(&input_image, &output_image);
+    runSobelOperator(&cuda_input_image, &cuda_output_image);
 
-    std::cout << std::endl << "Time for Sobel Operator using CUDA (GPU) : " << sdkGetTimerValue(&timer) << " ms" << std::endl;
+    std::cout << std::endl << "Time for Sobel Operator using CUDA (GPU) : " << sdkGetTimerValue(&cudaTimer) << " ms" << std::endl;
 
-    output_image.convertTo(output_image, CV_8UC1);
+    cuda_output_image.convertTo(cuda_output_image, CV_8UC1);
 
-    cv::imwrite(output_file, output_image);
+    cv::imwrite(cuda_output_file, cuda_output_image);
 
-    cleanup();
+    cudaCleanup();
 }
 
-void cleanup(void)
+void cudaCleanup(void)
 {
     if (deviceKernel)
     {
@@ -234,12 +234,12 @@ void cleanup(void)
         hostKernel = nullptr;
     }
 
-    if (timer)
+    if (cudaTimer)
     {
-        sdkDeleteTimer(&timer);
-        timer = nullptr;
+        sdkDeleteTimer(&cudaTimer);
+        cudaTimer = nullptr;
     }
 
-    output_image.release();
-    input_image.release();
+    cuda_output_image.release();
+    cuda_input_image.release();
 }

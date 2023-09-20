@@ -2,7 +2,15 @@
 
 #include <iostream>
 #include <opencv2/opencv.hpp>
-#include "../helper_timer.h"
+
+#ifndef HELPER_TIMER_H
+#define HELPER_TIMER_H
+    #include "../helper_timer.h"
+#endif
+
+#ifndef NOMINMAX
+    #define NOMINMAX
+#endif
 
 void sobelCV(int);
-void cleanup(void);
+void cvCleanup(void);

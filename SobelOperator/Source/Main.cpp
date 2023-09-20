@@ -1,8 +1,8 @@
 #include <iostream>
 #include <cstdlib>
 
-#include "../Headers/CUDA/SobelCUDA.cuh"
 #include "../Headers/OpenCV/SobelCV.hpp"
+#include "../Headers/CUDA/SobelCUDA.cuh"
 
 int main(int argc, char* argv[])
 {
