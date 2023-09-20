@@ -1,5 +1,5 @@
-.obj
-.exe
-.png
-.bmp
-.jpg
+*.obj
+*.exe
+*.png
+*.bmp
+*.jpg
