@@ -4,11 +4,11 @@
 #include "../Headers/CUDA/SobelCUDA.cuh"
 #include "../Headers/OpenCV/SobelCV.hpp"
 
-int main()
+int main(int argc, char* argv[])
 {
-    cudaHello();
+    sobelCV(atoi(argv[1]));
 
-    opencvHello();
+    sobelCUDA(atoi(argv[1]));
 
     exit(EXIT_SUCCESS);
 }
